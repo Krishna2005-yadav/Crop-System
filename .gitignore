@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.venv/
+.env
+
+# Database
+database.db
+
+# Large Models and Datasets
+New Plant Diseases Dataset(Augmented)/
+trained_plant_disease_model.keras
+# model.pkl  # keeping if not too large, but .keras is definitely too big for standard git
+
+# User Uploads
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Node.js (Root if any)
+node_modules/
+
+# OS / IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+# Project specific
+smart_farming_prd.md
+debug_signup.py
+migrate_admin.py
