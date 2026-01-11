@@ -9,6 +9,9 @@ import DiseaseDetection from "./pages/DiseaseDetection";
 import CropRecommendation from "./pages/CropRecommendation";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
+import FertilizerCalculator from "./pages/FertilizerCalculator";
+import AgriMap from "./pages/AgriMap";
+import FarmPlanner from "./pages/FarmPlanner";
 import Admin from "./pages/Admin";
 
 const ProtectedRoute = ({ children }) => {
@@ -59,6 +62,21 @@ function AppRoutes() {
           <Route path="/history" element={
             <ProtectedRoute>
               <History />
+            </ProtectedRoute>
+          } />
+          <Route path="/fertilizer" element={
+            <ProtectedRoute>
+              <FertilizerCalculator />
+            </ProtectedRoute>
+          } />
+          <Route path="/agri-map" element={
+            <ProtectedRoute>
+              <AgriMap />
+            </ProtectedRoute>
+          } />
+          <Route path="/farm-planner" element={
+            <ProtectedRoute>
+              <FarmPlanner />
             </ProtectedRoute>
           } />
           <Route path="/settings" element={

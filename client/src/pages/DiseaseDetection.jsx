@@ -78,7 +78,8 @@ export default function DiseaseDetection() {
                             plant_name: data.prediction.split('___')[0].replace('_', ' '), // Extract plant name from class
                             disease: data.prediction,
                             confidence: data.confidence,
-                            image_url: data.image_path
+                            image_url: data.image_path,
+                            all_probabilities: data.all_probabilities
                         });
                     } catch (logErr) {
                         console.error("Failed to log detection", logErr);
@@ -182,122 +183,129 @@ export default function DiseaseDetection() {
                     )}
 
                     {result && (
-                        <div className="grid lg:grid-cols-3 gap-8">
-                            {/* Left Column: Main Report (2/3 width) */}
-                            <div className="md:col-span-2 space-y-6">
-                                {/* Verdict Card */}
-                                <Card className="border-none shadow-md overflow-hidden bg-white dark:bg-gray-800">
-                                    <div className={cn("h-2 w-full", result.prediction.toLowerCase().includes("healthy") ? "bg-green-500" : "bg-red-500")} />
-                                    <CardContent className="p-6">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    {result.prediction.toLowerCase().includes("healthy") ? (
-                                                        <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-700">
-                                                            <CheckCircle className="h-4 w-4" /> Healthy
-                                                        </span>
-                                                    ) : (
-                                                        <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-red-100 text-red-700">
-                                                            <AlertTriangle className="h-4 w-4" /> Disease Detected
-                                                        </span>
-                                                    )}
-                                                    <span className="text-sm text-muted-foreground font-medium px-2 border-l">
-                                                        {result.confidence.toFixed(1)}% Confidence
-                                                    </span>
-                                                </div>
-                                                <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">
-                                                    {result.disease_details?.name || result.prediction.replace(/_/g, ' ')}
-                                                </h2>
-                                                <p className="text-muted-foreground mt-1 text-lg">
-                                                    {result.disease_details?.plant || 'Unknown Plant'}
-                                                </p>
-                                            </div>
-                                            {/* Confidence Ring/Indicator (Visual only) */}
-                                            <div className="relative h-16 w-16 hidden sm:flex items-center justify-center rounded-full border-4 border-gray-100 dark:border-gray-700">
-                                                <span className="text-xs font-bold text-gray-600 dark:text-gray-300">{Math.round(result.confidence)}%</span>
-                                                <div
-                                                    className={cn("absolute inset-0 rounded-full border-4 border-t-transparent animate-spin-slow", result.prediction.includes("healthy") ? "border-green-500" : "border-red-500")}
-                                                    style={{ transform: `rotate(${result.confidence * 3.6}deg)` }}
-                                                />
-                                            </div>
+                        <div className="space-y-6 max-w-4xl mx-auto">
+                            {/* 1. Instant Report Header */}
+                            <div className="flex flex-col items-center text-center space-y-3 mb-8">
+                                <div className={cn(
+                                    "inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold shadow-sm transition-all animate-in fade-in zoom-in duration-500",
+                                    result.prediction.toLowerCase().includes("healthy")
+                                        ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 ring-1 ring-green-200 dark:ring-green-800"
+                                        : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 ring-1 ring-red-200 dark:ring-red-800"
+                                )}>
+                                    {result.prediction.toLowerCase().includes("healthy") ? (
+                                        <CheckCircle className="h-4 w-4" />
+                                    ) : (
+                                        <AlertTriangle className="h-4 w-4" />
+                                    )}
+                                    Instant Report: Analysis Complete
+                                </div>
+                                <h2 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                                    {result.disease_details ? `${result.disease_details.plant}: ${result.disease_details.name}` : result.prediction.replace(/___/g, ': ').replace(/_/g, ' ')}
+                                </h2>
+                                <p className="text-xl text-muted-foreground font-medium">
+                                    {result.confidence.toFixed(1)}% Confidence • {result.disease_details?.plant || 'Unknown Plant'}
+                                </p>
+                            </div>
+
+                            {/* 2. Visual Comparison Section */}
+                            <div className="flex flex-wrap justify-center gap-12 py-6">
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="relative group">
+                                        <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-primary/10 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                                        <div className="relative h-48 w-48 rounded-full border-4 border-white dark:border-gray-800 shadow-xl overflow-hidden bg-muted">
+                                            <img src={preview} alt="Uploaded Leaf" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                                         </div>
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                    <span className="text-sm font-bold tracking-wide text-muted-foreground uppercase">Uploaded Leaf</span>
+                                </div>
 
-                                {/* Detailed Info Grid */}
-                                <div className="grid sm:grid-cols-2 gap-4">
-                                    {/* Symptoms */}
-                                    <Card className="bg-orange-50/50 dark:bg-orange-950/20 border-orange-100/50 dark:border-orange-900/40 shadow-sm hover:shadow-md transition-shadow">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-base font-semibold text-orange-900 dark:text-orange-200 flex items-center gap-2">
-                                                <div className="p-1.5 bg-orange-100 dark:bg-orange-900/50 rounded-md">
-                                                    <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                                                </div>
-                                                Symptoms
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                                                {result.disease_details?.symptoms || "No specific symptoms recorded."}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Treatment */}
-                                    <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-100/50 dark:border-blue-900/40 shadow-sm hover:shadow-md transition-shadow">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-base font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-2">
-                                                <div className="p-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-md">
-                                                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                                                </div>
-                                                Treatment
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                                                {result.disease_details?.treatment || "No specific treatment recorded."}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="relative group">
+                                        <div className="absolute -inset-1 bg-gradient-to-r from-green-500/20 to-emerald-500/10 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                                        <div className="relative h-48 w-48 rounded-full border-4 border-white dark:border-gray-800 shadow-xl overflow-hidden bg-muted flex items-center justify-center">
+                                            <div className="absolute inset-0 bg-green-500/5 dark:bg-green-500/10" />
+                                            {/* Using a generic leaf icon as we don't have a specific reference image in DB yet */}
+                                            <Info className="h-12 w-12 text-primary/40" />
+                                            <img
+                                                src={result.prediction.toLowerCase().includes("corn") ? "/images/diseases/corn_common_rust.png" : "/images/diseases/potato_late_blight.png"}
+                                                alt="Reference Leaf"
+                                                className="absolute inset-0 w-full h-full object-cover opacity-60 grayscale hover:grayscale-0 transition-all duration-500"
+                                            />
+                                        </div>
+                                    </div>
+                                    <span className="text-sm font-bold tracking-wide text-muted-foreground uppercase">Reference: {result.disease_details?.name || result.prediction.replace(/_/g, ' ')}</span>
                                 </div>
                             </div>
 
-                            {/* Right Column: Key Stats & Actions (1/3 width) */}
-                            <div className="space-y-6">
-                                {/* Probabilities Card */}
-                                <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                                    <CardHeader className="pb-3 border-b dark:border-gray-700 bg-muted/30 dark:bg-gray-900/30">
-                                        <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                                            🔍 Analysis Breakdown
+                            {/* 3. Details & Probability Grid */}
+                            <div className="grid md:grid-cols-2 gap-6 mt-8">
+                                <Card className="border-none shadow-md bg-white/50 dark:bg-gray-800/40 backdrop-blur-sm">
+                                    <CardHeader className="pb-3 px-6 pt-6">
+                                        <CardTitle className="text-lg font-bold flex items-center gap-2">
+                                            <AlertTriangle className="h-5 w-5 text-orange-500" />
+                                            Symptoms
                                         </CardTitle>
                                     </CardHeader>
-                                    <CardContent className="p-0">
-                                        <div className="divide-y max-h-[300px] overflow-y-auto custom-scrollbar">
-                                            {Object.entries(result.all_probabilities || {})
-                                                .sort(([, a], [, b]) => b - a)
-                                                .map(([name, prob]) => (
-                                                    <div key={name} className="flex items-center justify-between p-3 hover:bg-muted/50 dark:hover:bg-gray-700/50 transition-colors text-sm border-b dark:border-gray-700 last:border-0">
-                                                        <span className={cn("font-medium truncate pr-2", prob > 0 ? "text-gray-900 dark:text-gray-200" : "text-gray-400 dark:text-gray-500")}>
-                                                            {name.replace(/_/g, ' ').replace('Corn (maize)', '').replace('Potato', '').trim()}
-                                                        </span>
-                                                        <span className={cn("font-mono text-xs px-1.5 py-0.5 rounded", prob > 50 ? "bg-primary/10 text-primary font-bold" : "text-gray-400")}>
-                                                            {prob.toFixed(1)}%
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                        </div>
+                                    <CardContent className="px-6 pb-6">
+                                        <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                                            {result.disease_details?.symptoms || "No specific symptoms recorded for this detection."}
+                                        </p>
                                     </CardContent>
                                 </Card>
 
-                                {/* Actions */}
-                                <div className="flex flex-col gap-3">
-                                    <Button variant="outline" onClick={clearFile} className="w-full h-12 border-dashed hover:border-solid whitespace-nowrap">
-                                        <Upload className="mr-2 h-4 w-4" /> Analyze Another
-                                    </Button>
-                                    <Button variant="secondary" onClick={() => window.location.href = '/history'} className="w-full h-12 whitespace-nowrap">
-                                        <History className="mr-2 h-4 w-4" /> View History
-                                    </Button>
-                                </div>
+                                <Card className="border-none shadow-md bg-white/50 dark:bg-gray-800/40 backdrop-blur-sm">
+                                    <CardHeader className="pb-3 px-6 pt-6">
+                                        <CardTitle className="text-lg font-bold flex items-center gap-2">
+                                            <CheckCircle className="h-5 w-5 text-green-500" />
+                                            Treatment
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="px-6 pb-6">
+                                        <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                                            {result.disease_details?.treatment || "Maintain general crop health and consult a local agricultural expert."}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            {/* 4. Probability Analysis */}
+                            <Card className="border-none shadow-sm bg-muted/30 dark:bg-gray-900/30">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                                        Probability Analysis
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    {Object.entries(result.all_probabilities || {})
+                                        .sort(([, a], [, b]) => b - a)
+                                        .map(([name, prob]) => (
+                                            <div key={name} className="space-y-1.5">
+                                                <div className="flex justify-between text-sm font-medium px-1">
+                                                    <span>{name.replace(/_/g, ' ')}</span>
+                                                    <span className="font-mono">{prob.toFixed(1)}%</span>
+                                                </div>
+                                                <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={cn(
+                                                            "h-full rounded-full transition-all duration-1000 ease-out",
+                                                            prob > 70 ? "bg-primary" : prob > 30 ? "bg-orange-500" : "bg-gray-400"
+                                                        )}
+                                                        style={{ width: `${prob}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                </CardContent>
+                            </Card>
+
+                            {/* 5. Actions */}
+                            <div className="flex flex-wrap justify-center gap-4 pt-6">
+                                <Button size="lg" variant="outline" onClick={clearFile} className="px-8 h-12 rounded-full border-dashed">
+                                    <Upload className="mr-2 h-4 w-4" /> Analyze Another
+                                </Button>
+                                <Button size="lg" onClick={() => window.location.href = '/history'} className="px-8 h-12 rounded-full">
+                                    <History className="mr-2 h-4 w-4" /> View Full History
+                                </Button>
                             </div>
                         </div>
                     )}

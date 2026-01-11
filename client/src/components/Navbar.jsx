@@ -25,6 +25,9 @@ export default function Navbar() {
                 { name: "Dashboard", path: "/dashboard" },
                 { name: "Disease Detection", path: "/detect-disease" },
                 { name: "Crop Recommendation", path: "/recommend-crop" },
+                { name: "Fertilizer", path: "/fertilizer" },
+                { name: "Agri Map", path: "/agri-map" },
+                { name: "Farm Planner", path: "/farm-planner" },
                 { name: "History", path: "/history" },
                 ...(user.is_admin ? [{ name: "Admin", path: "/admin" }] : []),
             ]
@@ -33,19 +36,20 @@ export default function Navbar() {
 
     return (
         <nav className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b dark:border-gray-800 sticky top-0 z-50 transition-colors duration-300">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between h-16">
-                    <div className="flex items-center">
-                        <Link to="/" className="flex-shrink-0 flex items-center gap-2">
-                            <Leaf className="h-8 w-8 text-primary" />
-                            <span className="font-bold text-xl tracking-tight text-primary dark:text-green-400">SmartFarming</span>
+            <div className="max-w-[1400px] mx-auto px-4">
+                <div className="flex justify-between h-14">
+                    {/* Left side: Logo and nav links together */}
+                    <div className="flex items-center gap-1">
+                        <Link to="/" className="flex-shrink-0 flex items-center gap-1.5 mr-4">
+                            <Leaf className="h-6 w-6 text-primary" />
+                            <span className="font-bold text-base tracking-tight text-primary dark:text-green-400 hidden sm:inline">SmartFarming</span>
                         </Link>
-                        <div className="hidden md:ml-10 md:flex md:space-x-8">
+                        <div className="hidden md:flex items-center">
                             {navLinks.map((link) => (
                                 <Link
                                     key={link.name}
                                     to={link.path}
-                                    className="text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-green-400 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                                    className="text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-green-400 px-2 lg:px-3 py-1.5 rounded-md text-xs lg:text-sm font-medium transition-colors whitespace-nowrap"
                                 >
                                     {link.name}
                                 </Link>

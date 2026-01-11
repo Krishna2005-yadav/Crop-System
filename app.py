@@ -2,15 +2,53 @@ from flask import Flask, request, render_template, redirect, flash, session, jso
 import numpy as np
 import sqlite3
 import pickle
+import os
+import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import datetime
 import calendar
 
+# =============================================================================
+# CONFIGURATION - Load from environment variables with secure defaults
+# =============================================================================
+
+def get_secret_key():
+    """Get secret key from environment or generate a secure one for development."""
+    key = os.environ.get('SECRET_KEY')
+    if key:
+        return key
+    # Development fallback - generate a random key (sessions won't persist across restarts)
+    print("⚠️  WARNING: No SECRET_KEY set. Using random key (dev mode only).")
+    return secrets.token_hex(32)
+
 app = Flask(__name__)
-app.secret_key = 'vyron_secret_key'
+app.secret_key = get_secret_key()
+
+# Security configurations
 app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=7)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS access to session cookie
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'  # HTTPS only in prod
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
+
+# Environment detection
+IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
+
+# Import security utilities
+from security import (
+    rate_limiter, 
+    validate_email, 
+    validate_password, 
+    validate_username,
+    brute_force,
+    add_security_headers
+)
+
+# Add security headers to all responses
+@app.after_request
+def apply_security_headers(response):
+    return add_security_headers(response)
 
 # Load models
 model = pickle.load(open('model.pkl', 'rb'))
@@ -61,6 +99,19 @@ def init_db():
             disease TEXT,
             confidence REAL,
             image_url TEXT,
+            all_probabilities TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )''')
+        
+        # New table for Fertilizer Recommendations
+        conn.execute('''CREATE TABLE IF NOT EXISTS fertilizer_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            crop TEXT,
+            nitrogen_current REAL,
+            phosphorus_current REAL,
+            potassium_current REAL,
+            recommendation TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         )''')
         
@@ -83,6 +134,10 @@ def init_db():
             conn.execute('UPDATE users SET is_admin = 1 WHERE id = 2')
         except:
             pass  
+        try:
+            conn.execute('ALTER TABLE detection_logs ADD COLUMN all_probabilities TEXT')
+        except:
+            pass
 
 init_db()
 
@@ -164,14 +219,33 @@ def dashboard():
 
 @app.route('/signup', methods=['GET', 'POST'])
 @no_cache
+@rate_limiter.limit("3 per hour", error_message="Too many signup attempts. Please try again later.")
 def signup():
     # If already logged in, avoid showing signup
     if request.method == 'GET' and 'user_id' in session:
         return redirect('/')
     if request.method == 'POST':
-        email = request.form['email']
-        username = request.form['username']
-        password = generate_password_hash(request.form['password'])
+        email = request.form.get('email', '').strip()
+        username = request.form.get('username', '').strip()
+        raw_password = request.form.get('password', '')
+
+        # Input validation
+        is_valid, error = validate_email(email)
+        if not is_valid:
+            flash(error, "danger")
+            return redirect('/signup')
+        
+        is_valid, error = validate_username(username)
+        if not is_valid:
+            flash(error, "danger")
+            return redirect('/signup')
+        
+        is_valid, error = validate_password(raw_password)
+        if not is_valid:
+            flash(error, "danger")
+            return redirect('/signup')
+
+        password = generate_password_hash(raw_password)
 
         try:
             with sqlite3.connect('database.db') as conn:
@@ -187,19 +261,29 @@ def signup():
 
 @app.route('/login', methods=['GET', 'POST'])
 @no_cache
+@rate_limiter.limit("10 per minute", error_message="Too many login attempts. Please try again later.")
 def login():
     # If user is already authenticated and tries to access login page (e.g., via back button),
     # redirect them to home page to avoid showing login again.
     if request.method == 'GET' and 'user_id' in session:
         return redirect('/')
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+
+        # Check for brute force lockout
+        is_locked, remaining = brute_force.is_locked_out(email)
+        if is_locked:
+            flash(f"Too many failed attempts. Try again in {remaining} seconds.", "danger")
+            return redirect('/login')
 
         with sqlite3.connect('database.db') as conn:
             user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
 
         if user and check_password_hash(user[3], password):
+            # Clear brute force tracking on successful login
+            brute_force.record_success(email)
+            
             # Check if user is banned
             if user[4]:  # banned_until column
                 if user[4] == '9999-12-31':
@@ -231,7 +315,13 @@ def login():
             flash("Login successful!", "success")
             return redirect('/dashboard')
         else:
-            flash("Invalid credentials", "danger")
+            # Record failed attempt for brute force protection
+            brute_force.record_failure(email)
+            remaining = brute_force.get_remaining_attempts(email)
+            if remaining > 0:
+                flash(f"Invalid credentials. {remaining} attempts remaining.", "danger")
+            else:
+                flash("Too many failed attempts. Your account is temporarily locked.", "danger")
             return redirect('/login')
 
     return render_template("login.html")
@@ -1190,6 +1280,9 @@ def api_post_detection():
     disease = data.get('disease')
     confidence = float(data.get('confidence') or 0)
     image_url = data.get('image_url')
+    # Store all_probabilities as a JSON string
+    import json
+    all_probabilities = json.dumps(data.get('all_probabilities') or {})
     user_id = session.get('user_id')
 
     if not plant or disease is None:
@@ -1199,14 +1292,126 @@ def api_post_detection():
         with sqlite3.connect('database.db') as conn:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO detection_logs (user_id, plant_name, disease, confidence, image_url) VALUES (?,?,?,?,?)",
-                (user_id, plant, disease, confidence, image_url)
+                "INSERT INTO detection_logs (user_id, plant_name, disease, confidence, image_url, all_probabilities) VALUES (?,?,?,?,?,?)",
+                (user_id, plant, disease, confidence, image_url, all_probabilities)
             )
             detection_id = cur.lastrowid
         return { 'success': True, 'detection_id': detection_id }
     except Exception as e:
         return { 'error': str(e) }, 500
 
+
+# --------------------------
+# FERTILIZER RECOMMENDATION LOGIC
+# --------------------------
+
+# Ideal N-P-K values for various crops (per hectare/acre basis generic values)
+FERTILIZER_DATA = {
+    "Rice": {"N": 80, "P": 40, "K": 40},
+    "Maize": {"N": 100, "P": 50, "K": 50},
+    "Chickpea": {"N": 40, "P": 60, "K": 80},
+    "Kidneybeans": {"N": 20, "P": 60, "K": 20},
+    "Pigeonpeas": {"N": 20, "P": 60, "K": 20},
+    "Mothbeans": {"N": 20, "P": 40, "K": 20},
+    "Mungbean": {"N": 20, "P": 40, "K": 20},
+    "Blackgram": {"N": 20, "P": 40, "K": 20},
+    "Lentil": {"N": 20, "P": 60, "K": 20},
+    "Pomegranate": {"N": 60, "P": 30, "K": 30},
+    "Banana": {"N": 110, "P": 40, "K": 150},
+    "Mango": {"N": 100, "P": 50, "K": 100},
+    "Grapes": {"N": 60, "P": 40, "K": 120},
+    "Watermelon": {"N": 100, "P": 10, "K": 50},
+    "Muskmelon": {"N": 100, "P": 10, "K": 50},
+    "Apple": {"N": 100, "P": 50, "K": 100},
+    "Orange": {"N": 60, "P": 30, "K": 30},
+    "Papaya": {"N": 50, "P": 50, "K": 50},
+    "Coconut": {"N": 40, "P": 30, "K": 100},
+    "Cotton": {"N": 120, "P": 60, "K": 60},
+    "Jute": {"N": 80, "P": 40, "K": 40},
+    "Coffee": {"N": 100, "P": 20, "K": 30}
+}
+
+@app.route('/api/fertilizer/recommend', methods=['POST'])
+@login_required
+@rate_limiter.limit("10 per minute")
+def api_recommend_fertilizer():
+    """Calculates required fertilizers based on current N-P-K and target crop."""
+    data = request.get_json() or {}
+    crop = data.get('crop')
+    n_curr = float(data.get('nitrogen') or 0)
+    p_curr = float(data.get('phosphorus') or 0)
+    k_curr = float(data.get('potassium') or 0)
+    user_id = session.get('user_id')
+
+    if not crop or crop not in FERTILIZER_DATA:
+        return {'error': 'Invalid or missing crop name'}, 400
+
+    ideal = FERTILIZER_DATA[crop]
+    n_diff = ideal['N'] - n_curr
+    p_diff = ideal['P'] - p_curr
+    k_diff = ideal['K'] - k_curr
+
+    recommendations = []
+    
+    # Simple logic to suggest fertilizers:
+    # Urea: ~46% Nitrogen
+    # DAP: ~18% Nitrogen, 46% Phosphorus
+    # MOP: ~60% Potassium
+    
+    if n_diff > 0:
+        urea_needed = round(n_diff / 0.46, 2)
+        recommendations.append(f"Apply {urea_needed} kg/acre of Urea to increase Nitrogen.")
+    elif n_diff < -10:
+        recommendations.append("Nitrogen levels are very high. Avoid adding nitrogenous fertilizers and consider water flushing.")
+        
+    if p_diff > 0:
+        dap_needed = round(p_diff / 0.46, 2)
+        recommendations.append(f"Apply {dap_needed} kg/acre of DAP to increase Phosphorus.")
+    elif p_diff < -10:
+        recommendations.append("Phosphorus levels are high. Avoid adding phosphate fertilizers.")
+        
+    if k_diff > 0:
+        mop_needed = round(k_diff / 0.60, 2)
+        recommendations.append(f"Apply {mop_needed} kg/acre of MOP to increase Potassium.")
+    elif k_diff < -10:
+        recommendations.append("Potassium levels are sufficient/high. Avoid adding potash fertilizers.")
+
+    if not recommendations:
+        final_rec = "Your soil nutrient levels are optimal for this crop! No additional chemical fertilizers needed."
+    else:
+        final_rec = " ".join(recommendations)
+
+    try:
+        with sqlite3.connect('database.db') as conn:
+            conn.execute(
+                "INSERT INTO fertilizer_logs (user_id, crop, nitrogen_current, phosphorus_current, potassium_current, recommendation) VALUES (?,?,?,?,?,?)",
+                (user_id, crop, n_curr, p_curr, k_curr, final_rec)
+            )
+        return {
+            'success': True,
+            'crop': crop,
+            'ideal': ideal,
+            'current': {'N': n_curr, 'P': p_curr, 'K': k_curr},
+            'recommendation': final_rec
+        }
+    except Exception as e:
+        return {'error': str(e)}, 500
+
+@app.route('/api/fertilizer/history', methods=['GET'])
+@login_required
+def api_get_fertilizer_history():
+    user_id = session.get('user_id')
+    try:
+        with sqlite3.connect('database.db') as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM fertilizer_logs WHERE user_id = ? ORDER BY created_at DESC",
+                (user_id,)
+            ).fetchall()
+            history = [dict(r) for r in rows]
+        return {'success': True, 'history': history}
+    except Exception as e:
+        return {'error': str(e)}, 500
 
 @app.route('/api/detections', methods=['GET'])
 def api_get_detections():
@@ -1216,11 +1421,37 @@ def api_get_detections():
         with sqlite3.connect('database.db') as conn:
             cur = conn.cursor()
             if user_id == 2:  # admin: return all
-                cur.execute("SELECT id, user_id, plant_name, disease, confidence, image_url, created_at FROM detection_logs ORDER BY created_at DESC")
+                cur.execute("SELECT id, user_id, plant_name, disease, confidence, image_url, created_at, all_probabilities FROM detection_logs ORDER BY created_at DESC")
             else:
-                cur.execute("SELECT id, user_id, plant_name, disease, confidence, image_url, created_at FROM detection_logs WHERE user_id=? ORDER BY created_at DESC", (user_id,))
+                cur.execute("SELECT id, user_id, plant_name, disease, confidence, image_url, created_at, all_probabilities FROM detection_logs WHERE user_id=? ORDER BY created_at DESC", (user_id,))
             rows = cur.fetchall()
-        results = [dict(id=r[0], user_id=r[1], plant_name=r[2], disease=r[3], confidence=r[4], image_url=r[5], created_at=r[6]) for r in rows]
+        
+        results = []
+        import json
+        for r in rows:
+            probs = {}
+            try:
+                probs = json.loads(r[7] or '{}')
+            except:
+                pass
+            disease_key = (r[3] or "").strip()
+            results.append(dict(
+                id=r[0], 
+                user_id=r[1], 
+                plant_name=r[2], 
+                disease=r[3], 
+                confidence=r[4], 
+                image_url=r[5], 
+                created_at=r[6],
+                all_probabilities=probs,
+                disease_details=DISEASE_DETAILS.get(disease_key, {
+                    'plant': r[2] or 'Plant',
+                    'status': 'Unknown',
+                    'name': disease_key.replace('___', ': ').replace('_', ' ') or 'Unknown Disease',
+                    'symptoms': 'No specific info available for this historical record.',
+                    'treatment': 'Maintain general crop health and monitor for changes.'
+                })
+            ))
         return { 'detections': results }
     except Exception as e:
         return { 'error': str(e) }, 500
@@ -1298,14 +1529,20 @@ def api_post_recommendation():
     ph = float(data.get('ph') or 7)
     user_id = session.get('user_id')
 
-    # Simple rule-based recommendation (same logic as frontend but canonicalized)
-    crop = 'Wheat'
-    if N>120 and ph>6 and T>28:
-        crop='Sugarcane'
-    elif ph<5.5:
-        crop='Rice'
-    elif P>60:
-        crop='Potato'
+    # True ML Recommendation using the loaded model and scalers
+    try:
+        feature = np.array([N, P, K, T, ph]).reshape(1, -1)
+        mx_feature = mx.transform(feature)
+        sc_feature = sc.transform(mx_feature)
+        prediction = model.predict(sc_feature)[0]
+        crop = crop_dict.get(prediction, "Unknown")
+    except Exception as model_err:
+        print(f"Model prediction error in API: {model_err}")
+        # Fallback to simple logic if model fails
+        crop = 'Wheat'
+        if N>120 and ph>6 and T>28: crop='Sugarcane'
+        elif ph<5.5: crop='Rice'
+        elif P>60: crop='Potato'
 
     try:
         with sqlite3.connect('database.db') as conn:
