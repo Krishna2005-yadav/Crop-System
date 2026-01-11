@@ -1,6 +1,6 @@
 # Vyron Smart Farming Assistant 🌾
 
-An AI-powered agricultural platform designed to help farmers grow smarter. This project integrates a Flask backend with a React (Vite + Tailwind CSS) frontend to provide real-time crop disease detection and data-driven crop recommendations.
+An agricultural platform designed to help farmers grow smarter. This project integrates a Flask backend with a React (Vite + Tailwind CSS) frontend to provide real-time crop disease detection and data-driven crop recommendations.
 
 ## 🚀 Features
 
