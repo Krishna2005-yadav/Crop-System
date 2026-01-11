@@ -1,7 +1,4 @@
 """
-Security Utilities for Smart Farming Application
-=================================================
-
 This module provides:
 - In-memory rate limiting (production should use Redis)
 - Input validation functions
@@ -20,9 +17,6 @@ from collections import defaultdict
 from flask import request, jsonify
 import threading
 
-# =============================================================================
-# RATE LIMITING (In-Memory - Use Redis for production)
-# =============================================================================
 
 class RateLimiter:
     """
@@ -121,14 +115,11 @@ class RateLimiter:
 rate_limiter = RateLimiter()
 
 
-# =============================================================================
-# INPUT VALIDATION
-# =============================================================================
 
-# Email validation regex (RFC 5322 simplified)
+
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
-# Known disposable email domains (expand this list in production)
+
 DISPOSABLE_DOMAINS = {
     'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'mailinator.com',
     'throwaway.email', 'fakeinbox.com', 'trashmail.com', 'temp-mail.org',
@@ -153,7 +144,7 @@ def validate_email(email: str) -> tuple:
     if not EMAIL_REGEX.match(email):
         return False, "Invalid email format"
     
-    # Check for disposable domains
+  
     domain = email.split('@')[1].lower()
     if domain in DISPOSABLE_DOMAINS:
         return False, "Disposable email addresses are not allowed"
@@ -177,7 +168,7 @@ def validate_password(password: str) -> tuple:
     if len(password) > 128:
         return False, "Password is too long"
     
-    # Check for common weak passwords
+   
     COMMON_PASSWORDS = {
         'password', 'password1', '123456', '12345678', 'qwerty',
         'abc123', 'admin', 'letmein', 'welcome', 'monkey'
@@ -210,9 +201,7 @@ def validate_username(username: str) -> tuple:
     return True, None
 
 
-# =============================================================================
-# BRUTE FORCE PROTECTION
-# =============================================================================
+
 
 class BruteForceProtection:
     """
@@ -233,7 +222,7 @@ class BruteForceProtection:
         now = time.time()
         
         with self.lock:
-            # Clean old attempts
+            # Clean old attempts shiiiiiittttttt 
             self.failed_attempts[identifier] = [
                 t for t in self.failed_attempts[identifier]
                 if t > now - self.lockout_duration
@@ -241,7 +230,7 @@ class BruteForceProtection:
             
             self.failed_attempts[identifier].append(now)
             
-            # Check if lockout threshold reached
+        
             if len(self.failed_attempts[identifier]) >= self.max_attempts:
                 self.lockouts[identifier] = now + self.lockout_duration
     
@@ -279,13 +268,11 @@ class BruteForceProtection:
             return max(0, self.max_attempts - current)
 
 
-# Global brute force protection instance
+
 brute_force = BruteForceProtection()
 
 
-# =============================================================================
-# SECURE COMPARISON
-# =============================================================================
+
 
 def secure_compare(a: str, b: str) -> bool:
     """
@@ -294,10 +281,6 @@ def secure_compare(a: str, b: str) -> bool:
     """
     return hmac.compare_digest(a.encode('utf-8'), b.encode('utf-8'))
 
-
-# =============================================================================
-# SECURITY HEADERS MIDDLEWARE
-# =============================================================================
 
 def add_security_headers(response):
     """
