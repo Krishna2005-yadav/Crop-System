@@ -4,7 +4,7 @@ An AI-powered agricultural platform designed to help farmers grow smarter. This 
 
 ## 🚀 Features
 
-- **AI Disease Detection**: Instantly identify crop diseases (e.g., Corn Common Rust, Potato Blight) using deep learning models.
+- **Disease Detection**: Instantly identify crop diseases (e.g., Corn Common Rust, Potato Blight) using deep learning models.
 - **Crop Recommendation**: Get personalized suggestions for the best crops to plant based on soil NPK values, pH, and climate data.
 - **Admin Dashboard**: Manage users, monitor platform usage statistics, and handle account moderation.
 - **User Dashboard**: Track your personal history of detections and recommendations.
