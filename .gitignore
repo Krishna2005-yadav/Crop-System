@@ -13,7 +13,7 @@ database.db
 # Large Models and Datasets
 New Plant Diseases Dataset(Augmented)/
 trained_plant_disease_model.keras
-# model.pkl  # keeping if not too large, but .keras is definitely too big for standard git
+# model.pkl  
 
 # User Uploads
 static/uploads/*
